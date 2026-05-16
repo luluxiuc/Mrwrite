@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import { marked } from 'marked';
 import { WORKSPACE_DIR, getExportPath } from './storage';
 
 const execAsync = promisify(exec);
@@ -47,7 +48,9 @@ export async function checkPandoc(): Promise<boolean> {
   }
 }
 
-export function exportToHTML(markdown: string, title: string): string {
+export function exportToHTML(content: string, title: string): string {
+  const looksLikeHtml = /^<[a-z][\s\S]*>/i.test(content.trim());
+  const body = looksLikeHtml ? content : marked.parse(content);
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -61,6 +64,6 @@ export function exportToHTML(markdown: string, title: string): string {
     pre { background: #f4f4f4; padding: 16px; border-radius: 6px; overflow-x: auto; }
   </style>
 </head>
-<body>${markdown}</body>
+<body>${body}</body>
 </html>`;
 }
