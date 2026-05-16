@@ -33,6 +33,8 @@ export interface SkillExecuteRequest {
   context?: string;
   params?: Record<string, unknown>;
   model?: string;
+  apiKey?: string;
+  baseUrl?: string;
 }
 
 export interface SkillExecuteResult {

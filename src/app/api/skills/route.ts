@@ -17,7 +17,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { skillName, input, context, params } = body;
+  const { skillName, input, context, params, apiKey, baseUrl, model } = body;
 
   if (!skillName || !input) {
     return Response.json({ error: 'skillName and input required' }, { status: 400 });
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const readable = new ReadableStream({
     async start(controller) {
       await executeSkillStream(
-        { skillName, input, context, params },
+        { skillName, input, context, params, apiKey, baseUrl, model },
         {
           onChunk: (chunk) => {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));

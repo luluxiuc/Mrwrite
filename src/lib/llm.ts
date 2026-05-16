@@ -2,13 +2,13 @@
 
 import OpenAI from 'openai';
 
-interface LLMConfig {
+export interface LLMConfig {
   apiKey: string;
   baseURL: string;
   model: string;
 }
 
-function getConfig(): LLMConfig {
+function getEnvConfig(): LLMConfig {
   return {
     apiKey: process.env.LLM_API_KEY || '',
     baseURL: process.env.LLM_BASE_URL || 'https://api.openai.com/v1',
@@ -17,7 +17,7 @@ function getConfig(): LLMConfig {
 }
 
 export function createClient(config?: Partial<LLMConfig>) {
-  const c = { ...getConfig(), ...config };
+  const c = { ...getEnvConfig(), ...config };
   return new OpenAI({
     apiKey: c.apiKey,
     baseURL: c.baseURL,
@@ -25,9 +25,11 @@ export function createClient(config?: Partial<LLMConfig>) {
 }
 
 export interface StreamChatOptions {
+  apiKey: string;
+  baseURL: string;
+  model: string;
   systemPrompt: string;
-  userMessage: string;
-  model?: string;
+  messages: Array<{ role: string; content: string }>;
   temperature?: number;
   maxTokens?: number;
   onChunk: (chunk: string) => void;
@@ -36,18 +38,21 @@ export interface StreamChatOptions {
 }
 
 export async function streamChat(options: StreamChatOptions) {
-  const config = getConfig();
-  const openai = createClient();
+  const openai = createClient({
+    apiKey: options.apiKey || undefined,
+    baseURL: options.baseURL || undefined,
+    model: options.model || undefined,
+  });
 
   try {
     const stream = await openai.chat.completions.create({
-      model: options.model || config.model,
+      model: options.model,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens || 4096,
       stream: true,
       messages: [
         { role: 'system', content: options.systemPrompt },
-        { role: 'user', content: options.userMessage },
+        ...options.messages as any,
       ],
     });
 
@@ -61,21 +66,44 @@ export async function streamChat(options: StreamChatOptions) {
   }
 }
 
-export async function chat(
-  systemPrompt: string,
-  userMessage: string,
-  model?: string
-): Promise<string> {
-  const config = getConfig();
-  const openai = createClient();
+export async function chat(options: {
+  apiKey: string;
+  baseURL: string;
+  model: string;
+  systemPrompt: string;
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<string> {
+  const openai = createClient({
+    apiKey: options.apiKey || undefined,
+    baseURL: options.baseURL || undefined,
+    model: options.model || undefined,
+  });
 
   const response = await openai.chat.completions.create({
-    model: model || config.model,
+    model: options.model,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.maxTokens || 4096,
     messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
+      { role: 'system', content: options.systemPrompt },
+      ...options.messages as any,
     ],
   });
 
   return response.choices[0]?.message?.content || '';
+}
+
+export async function testConnection(config: LLMConfig): Promise<{ ok: boolean; error?: string; model?: string }> {
+  try {
+    const openai = createClient(config);
+    const response = await openai.chat.completions.create({
+      model: config.model,
+      messages: [{ role: 'user', content: 'Respond with exactly: OK' }],
+      max_tokens: 10,
+    });
+    return { ok: true, model: response.model };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
 }
