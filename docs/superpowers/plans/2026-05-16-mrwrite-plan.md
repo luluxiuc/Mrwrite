@@ -8,6 +8,13 @@
 
 **Tech Stack:** Next.js 14, TypeScript, TipTap, Tailwind CSS, shadcn/ui, better-sqlite3, OpenAI SDK, Pandoc
 
+**Architecture Refinements (from high-star agent research):**
+1. **Progressive Skill Loading**: L1 (metadata ~100 tokens) → L2 (full SKILL.md on demand) → L3 (scripts/resources on demand). Never preload more than one skill.
+2. **Context Compression**: 5-tier pipeline — message size limit → snip old → microcompact → context collapse → auto-compact (summarize, never truncate).
+3. **Filesystem as Memory**: Large outputs written to files, agent discovers via targeted reads. Tool output capped at ~8000 chars.
+4. **Session Isolation**: Subagents get fresh context windows; only summaries return to parent.
+5. **On-Demand Loading**: Documentation/schemas/skills kept out of system prompt, fetched only when invoked.
+
 ---
 
 ## File Structure Map
