@@ -90,19 +90,16 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
     testConnection(creds).then(setConnectionOk).catch(() => setConnectionOk(false));
   }, []);
 
-  // Auto-scroll on new messages or streaming content
+  // Auto-scroll: immediate during streaming, smooth otherwise
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Aggressive scroll during streaming
-  useEffect(() => {
-    if (loading && scrollRef.current) {
-      const el = scrollRef.current;
-      const raf = requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      });
-      return () => cancelAnimationFrame(raf);
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    if (loading) {
+      // During streaming, scroll immediately
+      el.scrollTop = el.scrollHeight;
+    } else {
+      // After message complete, smooth scroll
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
   }, [messages, loading]);
 
@@ -471,7 +468,7 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
   const usageColor = usagePercent > 80 ? '#ef4444' : usagePercent > 50 ? '#f59e0b' : '#22c55e';
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Conversation header */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
         <button
@@ -571,7 +568,7 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0">
         {messages.length === 0 && (
           <div className="p-6 text-center text-sm text-text-muted">
             <div className="w-10 h-10 rounded-xl bg-accent-subtle flex items-center justify-center mx-auto mb-3">

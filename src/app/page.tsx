@@ -75,7 +75,7 @@ export default function Home() {
     <>
       <ThreePanelLayout
         leftPanel={
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full min-h-0 overflow-y-auto">
             <DocumentList onSelect={handleDocSelect} activeId={currentDocId} />
             <div className="mx-3 border-t border-border" />
             <SkillBar onSkillSelect={handleSkillSelect} selectedText={selectedText} autoSkills={autoSkills} />
@@ -101,7 +101,7 @@ export default function Home() {
           />
         }
         rightPanel={
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full min-h-0">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
               <span className="text-xs font-medium text-text-secondary tracking-wide uppercase">AI 写作助手</span>
               <button onClick={() => setSettingsOpen(true)} className="btn-ghost p-1.5">

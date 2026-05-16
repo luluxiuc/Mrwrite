@@ -108,9 +108,9 @@ export const WritingEditor = forwardRef<EditorHandle, WritingEditorProps>(
     }, [editor]);
 
     return (
-      <div className="flex flex-col h-full bg-bg-editor">
+      <div className="flex flex-col h-full bg-bg-editor min-h-0">
         <EditorToolbar editor={editor} />
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           <div className="max-w-[720px] mx-auto">
             <EditorContent editor={editor} />
           </div>
