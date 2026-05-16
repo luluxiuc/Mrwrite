@@ -453,12 +453,20 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
     }
   };
 
-  // Context usage calculation
+  const [clientCreds, setClientCreds] = useState<Credentials>({
+    apiKey: '', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', temperature: 0.7, maxTokens: 4096,
+  });
+
+  // Sync credentials from localStorage on client only
+  useEffect(() => {
+    setClientCreds(getCredentials());
+  }, []);
+
+  // Context usage calculation — uses client-side state to avoid hydration mismatch
   const systemPrompt = buildSystemPrompt();
   const allText = systemPrompt + messages.map((m) => m.content).join('');
   const usedTokens = estimateTokens(allText);
-  const creds = getCredentials();
-  const maxTokens = creds.maxTokens || 4096;
+  const maxTokens = clientCreds.maxTokens || 4096;
   const usagePercent = Math.min(100, Math.round((usedTokens / maxTokens) * 100));
   const usageColor = usagePercent > 80 ? '#ef4444' : usagePercent > 50 ? '#f59e0b' : '#22c55e';
 
