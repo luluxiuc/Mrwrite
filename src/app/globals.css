@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-bg text-gray-200 antialiased;
+  }
+}
+
+.ProseMirror {
+  @apply outline-none min-h-[60vh] px-8 py-6;
+  font-family: Georgia, Cambria, serif;
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+.ProseMirror p { @apply mb-4; }
+.ProseMirror h1 { @apply text-3xl font-bold mb-6 mt-8; }
+.ProseMirror h2 { @apply text-2xl font-semibold mb-4 mt-6; }
+.ProseMirror h3 { @apply text-xl font-medium mb-3 mt-4; }
+.ProseMirror blockquote { @apply border-l-4 border-accent pl-4 italic my-4 text-gray-400; }
+.ProseMirror ul { @apply list-disc ml-6 mb-4; }
+.ProseMirror ol { @apply list-decimal ml-6 mb-4; }
+.ProseMirror code { @apply bg-surface px-1.5 py-0.5 rounded text-sm font-mono; }
+.ProseMirror pre { @apply bg-surface p-4 rounded-lg my-4 overflow-x-auto; }
+.ProseMirror pre code { @apply bg-transparent p-0; }
+.ProseMirror hr { @apply border-border my-8; }
