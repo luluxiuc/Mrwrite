@@ -7,13 +7,17 @@ interface ChatMessageProps {
 
 export function ChatMessage({ role, content }: ChatMessageProps) {
   return (
-    <div className={`flex gap-2 px-3 py-2 ${role === 'user' ? 'bg-bg/50' : ''}`}>
-      <div className={`shrink-0 w-6 h-6 rounded flex items-center justify-center ${role === 'user' ? 'bg-accent' : 'bg-surface border border-border'}`}>
-        {role === 'user' ? <User size={12} /> : <Bot size={12} />}
+    <div className={`flex gap-3 px-4 py-3 ${role === 'user' ? 'bg-bg/40' : ''}`}>
+      <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
+        role === 'user'
+          ? 'bg-accent/20 text-accent'
+          : 'bg-surface border border-border text-text-secondary'
+      }`}>
+        {role === 'user' ? <User size={13} /> : <Bot size={13} />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-gray-500 mb-1">{role === 'user' ? '你' : 'MrWrite'}</div>
-        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">{content}</div>
+        <div className="text-[11px] text-text-muted mb-1 font-medium">{role === 'user' ? 'You' : 'MrWrite'}</div>
+        <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-text-primary/90">{content}</div>
       </div>
     </div>
   );

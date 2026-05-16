@@ -1,12 +1,13 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Zap } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
 
 interface ChatPanelProps {
   selectedText: string;
   documentContent: string;
   currentDocId: string | null;
+  autoSkills?: string[];
 }
 
 interface Message {
@@ -14,7 +15,16 @@ interface Message {
   content: string;
 }
 
-export function ChatPanel({ selectedText, documentContent, currentDocId }: ChatPanelProps) {
+const SKILL_LABELS: Record<string, string> = {
+  humanizer: '去 AI 味',
+  'outline-generator': '生成大纲',
+  'chapter-manager': '章节管理',
+  'style-transfer': '风格迁移',
+  'continuity-checker': '一致性检查',
+  'quality-gate': '质量门禁',
+};
+
+export function ChatPanel({ selectedText, documentContent, currentDocId, autoSkills = [] }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -147,36 +157,61 @@ export function ChatPanel({ selectedText, documentContent, currentDocId }: ChatP
 
   return (
     <div className="flex flex-col flex-1">
-      <div className="p-3 border-b border-border">
-        <p className="text-[10px] text-gray-500">{selectedText ? `已选中 ${selectedText.length} 字` : '选中文字后可使用技能'}</p>
+      {/* Auto-skill banner */}
+      {autoSkills.length > 0 && (
+        <div className="px-4 py-2 bg-accent-subtle border-b border-accent/20">
+          <p className="text-[11px] text-accent font-medium mb-1.5 flex items-center gap-1.5">
+            <Zap size={11} /> AI 建议使用的技能
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {autoSkills.map(skillName => (
+              <button key={skillName} onClick={() => executeSkill(skillName, selectedText || documentContent, '')}
+                className="px-2.5 py-1 text-[11px] rounded-full bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20 transition-all">
+                {SKILL_LABELS[skillName] || skillName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Selection info */}
+      <div className="px-4 py-2 border-b border-border">
+        <p className="text-[11px] text-text-muted">{selectedText ? `已选中 ${selectedText.length} 字` : '选中文字后可使用技能'}</p>
       </div>
+
+      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {messages.length === 0 && (
-          <div className="p-4 text-center text-sm text-gray-600">
-            <p className="mb-3">选择左边技能或直接对话</p>
+          <div className="p-6 text-center text-sm text-text-muted">
+            <div className="w-10 h-10 rounded-xl bg-accent-subtle flex items-center justify-center mx-auto mb-3">
+              <Zap size={18} className="text-accent" />
+            </div>
+            <p className="mb-3 text-text-secondary">选择左侧技能或直接对话</p>
             {skills.slice(0, 6).map((s) => (
               <button key={s.name} onClick={() => { if (selectedText) executeSkill(s.name, selectedText, documentContent); }} disabled={!selectedText}
-                className="inline-block px-2 py-1 m-0.5 rounded bg-surface border border-border text-xs text-gray-400 hover:text-gray-200 disabled:opacity-40">
-                {s.name}
+                className="inline-block px-3 py-1.5 m-1 rounded-lg bg-surface border border-border text-xs text-text-secondary hover:text-text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                {SKILL_LABELS[s.name] || s.name}
               </button>
             ))}
           </div>
         )}
         {messages.map((msg, i) => (<ChatMessage key={i} role={msg.role} content={msg.content} />))}
         {loading && (
-          <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
-            <Loader2 size={14} className="animate-spin" />{activeSkill ? `执行 ${activeSkill}...` : '思考中...'}
+          <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-text-muted">
+            <Loader2 size={14} className="animate-spin" />{activeSkill ? `执行 ${SKILL_LABELS[activeSkill] || activeSkill}...` : '思考中...'}
           </div>
         )}
       </div>
+
+      {/* Input */}
       <div className="p-3 border-t border-border">
         <div className="flex gap-2">
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             placeholder={selectedText ? '让 AI 帮你处理选中文字...' : '输入写作指令...'}
-            className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-accent" rows={2} />
+            className="flex-1 bg-bg-editor border border-border rounded-lg px-3 py-2 text-[13px] resize-none focus:outline-none focus:border-accent/50 placeholder:text-text-muted transition-all" rows={2} />
           <button onClick={sendMessage} disabled={loading || !input.trim()}
-            className="shrink-0 p-2 bg-accent text-white rounded-lg disabled:opacity-40 hover:bg-accent/80 transition-colors">
+            className="shrink-0 p-2.5 bg-accent text-black rounded-lg disabled:opacity-40 hover:bg-accent-hover transition-all self-end">
             <Send size={16} />
           </button>
         </div>

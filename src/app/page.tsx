@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ThreePanelLayout } from '@/components/layout/ThreePanelLayout';
 import { WritingEditor } from '@/components/editor/WritingEditor';
 import { SkillBar } from '@/components/sidebar/SkillBar';
@@ -11,22 +11,49 @@ import { Settings } from 'lucide-react';
 export default function Home() {
   const [selectedText, setSelectedText] = useState('');
   const [documentContent, setDocumentContent] = useState('');
+  const [documentText, setDocumentText] = useState('');
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoSkills, setAutoSkills] = useState<string[]>([]);
+  const lastContentRef = useRef('');
+
+  // Auto-detect which skills to apply
+  useEffect(() => {
+    const detectSkills = async () => {
+      if (!documentText || documentText.length < 100) return;
+
+      // Only detect when content meaningfully changes
+      if (Math.abs(documentText.length - lastContentRef.current.length) < 50) return;
+      lastContentRef.current = documentText;
+
+      try {
+        const res = await fetch('/api/skills/auto-detect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: documentText.slice(0, 2000) }),
+        });
+        const data = await res.json();
+        if (data.skills) setAutoSkills(data.skills);
+      } catch {}
+    };
+
+    const timer = setTimeout(detectSkills, 2000);
+    return () => clearTimeout(timer);
+  }, [documentText]);
 
   const handleSkillSelect = useCallback((skillName: string) => {
     window.dispatchEvent(new CustomEvent('execute-skill', {
-      detail: { skillName, selectedText, documentContent, docId: currentDocId },
+      detail: { skillName, selectedText, documentContent, docId: currentDocId, autoMode: false },
     }));
   }, [selectedText, documentContent, currentDocId]);
 
-  const handleDocSelect = async (id: string) => {
+  const handleDocSelect = async (id: string, _title?: string) => {
     setCurrentDocId(id);
-    const res = await fetch(`/api/documents/${id}`);
-    const doc = await res.json();
-    if (doc.content) {
-      setDocumentContent(doc.content);
-    }
+    try {
+      const res = await fetch(`/api/documents/${id}`);
+      const doc = await res.json();
+      if (doc.content) setDocumentContent(doc.content);
+    } catch {}
   };
 
   return (
@@ -35,8 +62,8 @@ export default function Home() {
         leftPanel={
           <div className="flex flex-col h-full">
             <DocumentList onSelect={handleDocSelect} activeId={currentDocId} />
-            <div className="border-t border-border" />
-            <SkillBar onSkillSelect={handleSkillSelect} selectedText={selectedText} />
+            <div className="mx-3 border-t border-border" />
+            <SkillBar onSkillSelect={handleSkillSelect} selectedText={selectedText} autoSkills={autoSkills} />
           </div>
         }
         centerPanel={
@@ -44,6 +71,7 @@ export default function Home() {
             content={documentContent}
             onUpdate={(html, text) => {
               setDocumentContent(html);
+              setDocumentText(text);
               if (currentDocId) {
                 fetch(`/api/documents/${currentDocId}`, {
                   method: 'PUT',
@@ -53,18 +81,18 @@ export default function Home() {
               }
             }}
             onSelectionChange={setSelectedText}
-            placeholder="开始创作..."
+            placeholder="开始写作..."
           />
         }
         rightPanel={
           <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between p-2 border-b border-border">
-              <span className="text-xs text-gray-500">AI 助手</span>
-              <button onClick={() => setSettingsOpen(true)} className="p-1 hover:bg-bg rounded text-gray-400">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
+              <span className="text-xs font-medium text-text-secondary tracking-wide uppercase">AI 写作助手</span>
+              <button onClick={() => setSettingsOpen(true)} className="btn-ghost p-1.5">
                 <Settings size={14} />
               </button>
             </div>
-            <ChatPanel selectedText={selectedText} documentContent={documentContent} currentDocId={currentDocId} />
+            <ChatPanel selectedText={selectedText} documentContent={documentContent} currentDocId={currentDocId} autoSkills={autoSkills} />
           </div>
         }
       />

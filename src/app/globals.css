@@ -2,27 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @layer base {
+  * { @apply border-border; }
   body {
-    @apply bg-bg text-gray-200 antialiased;
+    @apply bg-bg text-text-primary antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
+  ::selection { @apply bg-accent/30 text-text-primary; }
 }
 
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-text-muted; }
+
+/* ProseMirror Editor Styles */
 .ProseMirror {
-  @apply outline-none min-h-[60vh] px-8 py-6;
-  font-family: Georgia, Cambria, serif;
+  @apply outline-none min-h-[60vh] px-12 py-10;
+  font-family: 'Lora', Georgia, serif;
   font-size: 18px;
-  line-height: 1.8;
+  line-height: 1.85;
+  color: #ede8dc;
+  max-width: 680px;
+  margin: 0 auto;
 }
 
-.ProseMirror p { @apply mb-4; }
-.ProseMirror h1 { @apply text-3xl font-bold mb-6 mt-8; }
-.ProseMirror h2 { @apply text-2xl font-semibold mb-4 mt-6; }
-.ProseMirror h3 { @apply text-xl font-medium mb-3 mt-4; }
-.ProseMirror blockquote { @apply border-l-4 border-accent pl-4 italic my-4 text-gray-400; }
-.ProseMirror ul { @apply list-disc ml-6 mb-4; }
-.ProseMirror ol { @apply list-decimal ml-6 mb-4; }
-.ProseMirror code { @apply bg-surface px-1.5 py-0.5 rounded text-sm font-mono; }
-.ProseMirror pre { @apply bg-surface p-4 rounded-lg my-4 overflow-x-auto; }
-.ProseMirror pre code { @apply bg-transparent p-0; }
-.ProseMirror hr { @apply border-border my-8; }
+.ProseMirror p { @apply mb-5 leading-relaxed; }
+.ProseMirror h1 { @apply text-3xl font-semibold mb-8 mt-12 text-text-primary tracking-tight; font-family: 'DM Sans', sans-serif; }
+.ProseMirror h2 { @apply text-2xl font-medium mb-5 mt-10 text-text-primary; font-family: 'DM Sans', sans-serif; }
+.ProseMirror h3 { @apply text-xl font-medium mb-4 mt-8 text-text-secondary; font-family: 'DM Sans', sans-serif; }
+.ProseMirror blockquote { @apply border-l-2 border-accent/40 pl-6 italic my-6 text-text-secondary text-lg; }
+.ProseMirror ul { @apply list-disc ml-6 mb-5 space-y-2; }
+.ProseMirror ol { @apply list-decimal ml-6 mb-5 space-y-2; }
+.ProseMirror li { @apply leading-relaxed; }
+.ProseMirror code { @apply bg-surface px-1.5 py-0.5 rounded text-sm font-mono text-accent; }
+.ProseMirror pre { @apply bg-surface p-5 rounded-xl my-6 overflow-x-auto border border-border; }
+.ProseMirror pre code { @apply bg-transparent p-0 text-text-secondary; }
+.ProseMirror hr { @apply border-border my-10; }
+.ProseMirror a { @apply text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent; }
+
+/* Placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #4a4640;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: italic;
+}
+
+/* Focus mode */
+.ProseMirror-focused { outline: none; }
+
+/* Smooth transitions */
+.sidebar-transition { transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Glass effect for dialogs */
+.glass-surface {
+  background: rgba(34, 33, 30, 0.9);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Button base */
+.btn-ghost {
+  @apply text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-all;
+}
+
+.btn-accent {
+  @apply bg-accent text-black font-medium rounded-lg hover:bg-accent-hover transition-all;
+}
