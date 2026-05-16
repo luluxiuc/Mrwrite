@@ -1,0 +1,15 @@
+{
+  "patterns": [
+    { "name": "mechanical-transitions", "pattern": "(首先|其次|然后|最后|总之|此外|另外|同时|因此|所以|然而|但是|不过|尽管|虽然|一方面|另一方面)", "weight": 3 },
+    { "name": "filler-phrases", "pattern": "(值得注意的是|不可否认|毋庸置疑|众所周知|毫无疑问|显而易见|不言而喻|可以说|应该说)", "weight": 4 },
+    { "name": "ai-cliches", "pattern": "(在当今|随著.*的发展|在这个.*的时代|.*是一个.*的问题|.*发挥著.*的作用|.*不仅.*而且|.*既.*又)", "weight": 5 },
+    { "name": "adjective-piling", "pattern": "(深刻|深入|全面|系统|科学|合理|有效|积极|重要|关键|核心|本质|根本).{0,2}(深刻|深入|全面|系统|科学|合理|有效|积极|重要|关键|核心|本质|根本)", "weight": 2 },
+    { "name": "uniform-sentences", "pattern": "^.{30,60}$", "weight": 1 },
+    { "name": "passive-voice", "pattern": "(被|受到|得到|遭到|获得|遭到|为.*所|由.*所)", "weight": 1 },
+    { "name": "formal-nominalization", "pattern": "(进行|做出|予以|加以|给予|实施|开展|推进|促进|推动|加强|提高|提升)", "weight": 2 }
+  ],
+  "scoring": {
+    "threshold": 60,
+    "maxRetries": 2
+  }
+}
