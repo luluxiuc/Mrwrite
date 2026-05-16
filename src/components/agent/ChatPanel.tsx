@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Zap, Wifi, WifiOff, Plus, MessageSquare, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { marked } from 'marked';
 import { ChatMessage } from './ChatMessage';
 
 interface ChatPanelProps {
@@ -182,16 +183,38 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
     } catch { return ''; }
   };
 
-  const handleApplyToEditor = (content: string) => {
+  const handleApplyToEditor = (content: string, forceMode?: 'replace' | 'append') => {
     if (!content) return;
-    // Convert plain text to HTML paragraphs for the editor
-    const html = content
-      .split(/\n\n+/)
-      .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
-      .join('');
+    const html = marked.parse(content) as string;
+    const mode = forceMode || (selectedText ? 'replace' : 'append');
     window.dispatchEvent(new CustomEvent('insert-to-editor', {
-      detail: { html, mode: selectedText ? 'replace' : 'append' },
+      detail: { html, mode },
     }));
+  };
+
+  // Strip WRITE markers for clean streaming display
+  const stripMarkersForDisplay = (content: string): string => {
+    return content
+      .replace(/<<<WRITE>>>/g, '')
+      .replace(/<<<\/WRITE>>>/g, '');
+  };
+
+  // Parse AI response for <<<WRITE>>> markers and push to editor
+  const processEditorMarkers = (content: string): string => {
+    const markerRegex = /<<<WRITE>>>\s*([\s\S]*?)<<<\/WRITE>>>/g;
+    let displayContent = content;
+    const editorContents: string[] = [];
+    let match;
+    while ((match = markerRegex.exec(content)) !== null) {
+      editorContents.push(match[1].trim());
+    }
+    if (editorContents.length > 0) {
+      displayContent = content.replace(markerRegex, () => '\n\n_已写入编辑器_\n');
+      for (const editorContent of editorContents) {
+        handleApplyToEditor(editorContent);
+      }
+    }
+    return displayContent;
   };
 
   const persistMessage = async (convId: string, role: 'user' | 'assistant' | 'system', content: string) => {
@@ -225,13 +248,37 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
       ? documentContent.slice(0, maxContentLen) + '\n...(内容过长，已截取前5000字)'
       : documentContent;
 
-    return `你是一位专业的 AI 写作助手，运行在 MrWrite 写作工作台中。
+    return `你是一位专业的 AI 写作助手，运行在 MrWrite 写作工作台中。你可以直接控制用户的编辑器。
+
+## 编辑器控制（重要！）
+
+你可以通过特殊标记将内容**直接写入**用户的编辑器。使用以下格式：
+
+<<<WRITE>>>
+你要写入编辑器的内容（支持 Markdown）
+<<</WRITE>>>
+
+规则：
+- WRITE 标记之间的内容会**自动写入编辑器**，不会显示在聊天中
+- 如果用户选中了文字，内容会**替换选中文字**
+- 如果用户没有选中文字，内容会**追加到文档末尾**
+- 你可以在 WRITE 标记前后写解释性文字（会显示在聊天中）
+- 一次回复可以使用多个 WRITE 块
+- WRITE 块中的内容应该是完整的、可以直接使用的文字
+
+示例对话：
+用户: 帮我把这段改得更生动
+AI: 好的，我加入了更多细节和动作描写：
+<<<WRITE>>>
+（改写后的生动文字）
+<<</WRITE>>>
+已经写入编辑器，你看看效果。
 
 ## 你的能力
 - 你可以看到用户正在写的文章全文
 - 你可以讨论写作思路、提供建议
-- 你可以根据用户要求生成内容
-- 你可以修改、润色、重写选中的文字
+- 你可以根据用户要求生成内容，并通过 WRITE 标记直接写入编辑器
+- 你可以修改、润色、重写选中的文字并自动写回编辑器
 - 你可以调用写作技能（去AI味、生成大纲、风格迁移等）
 
 ## 当前文档
@@ -244,11 +291,10 @@ ${truncated}
 ## 当前选中文字
 ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
 
-## 工作方式
-1. 理解用户的需求
-2. 如果需要生成新内容，直接在聊天中输出
-3. 如果用户确认，可以说「我将把这些内容写入编辑器」
-4. 对选中的文字，可以直接给出修改后的版本
+## 重要提醒
+- 当用户让你写/改/润色/生成内容时，**必须使用 <<<WRITE>>> 标记**将结果写入编辑器
+- 不要只说"我已经写入了"，要真正使用标记
+- 标记内的内容应该纯粹是可发布的文字，不要包含解释
 
 请用中文回复，专业、有温度。`;
   };
@@ -278,9 +324,10 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
             const parsed = JSON.parse(data);
             if (parsed.content) {
               fullContent += parsed.content;
+              const displayContent = stripMarkersForDisplay(fullContent);
               setMessages((prev) => {
                 const updated = [...prev];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
+                updated[updated.length - 1] = { ...updated[updated.length - 1], content: displayContent };
                 return updated;
               });
             }
@@ -302,6 +349,17 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
         }
       }
     }
+    // Process any WRITE markers and push content to editor
+    const displayContent = processEditorMarkers(fullContent);
+    if (displayContent !== fullContent) {
+      fullContent = displayContent;
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...updated[updated.length - 1], content: displayContent };
+        return updated;
+      });
+    }
+
     await persistMessage(convId, 'assistant', fullContent);
     return fullContent;
   };
