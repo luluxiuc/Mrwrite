@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ThreePanelLayout } from '@/components/layout/ThreePanelLayout';
-import { WritingEditor } from '@/components/editor/WritingEditor';
+import { WritingEditor, EditorHandle } from '@/components/editor/WritingEditor';
 import { SkillBar } from '@/components/sidebar/SkillBar';
 import { DocumentList } from '@/components/sidebar/DocumentList';
 import { ChatPanel } from '@/components/agent/ChatPanel';
@@ -16,6 +16,7 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoSkills, setAutoSkills] = useState<string[]>([]);
   const lastContentRef = useRef('');
+  const editorRef = useRef<EditorHandle>(null);
 
   // Auto-detect which skills to apply
   useEffect(() => {
@@ -47,12 +48,26 @@ export default function Home() {
     }));
   }, [selectedText, documentContent, currentDocId]);
 
+  const handleSkillApply = useCallback((skillName: string, output: string) => {
+    // When a skill produces output, offer to insert into editor
+    if (output && editorRef.current) {
+      const sel = editorRef.current.getSelection();
+      if (sel.from !== sel.to) {
+        editorRef.current.replaceSelection(output);
+      } else {
+        editorRef.current.appendContent(output);
+      }
+    }
+  }, []);
+
   const handleDocSelect = async (id: string, _title?: string) => {
     setCurrentDocId(id);
     try {
       const res = await fetch(`/api/documents/${id}`);
       const doc = await res.json();
-      if (doc.content) setDocumentContent(doc.content);
+      if (doc.content !== undefined) {
+        setDocumentContent(doc.content);
+      }
     } catch {}
   };
 
@@ -68,6 +83,7 @@ export default function Home() {
         }
         centerPanel={
           <WritingEditor
+            ref={editorRef}
             content={documentContent}
             onUpdate={(html, text) => {
               setDocumentContent(html);
@@ -92,7 +108,13 @@ export default function Home() {
                 <Settings size={14} />
               </button>
             </div>
-            <ChatPanel selectedText={selectedText} documentContent={documentContent} currentDocId={currentDocId} autoSkills={autoSkills} />
+            <ChatPanel
+              selectedText={selectedText}
+              documentContent={documentContent}
+              currentDocId={currentDocId}
+              autoSkills={autoSkills}
+              onSkillApply={handleSkillApply}
+            />
           </div>
         }
       />

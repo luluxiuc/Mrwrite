@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Zap, Wifi, WifiOff, Plus, MessageSquare, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
 
@@ -8,6 +8,7 @@ interface ChatPanelProps {
   documentContent: string;
   currentDocId: string | null;
   autoSkills?: string[];
+  onSkillApply?: (skillName: string, output: string) => void;
 }
 
 interface Message {
@@ -59,7 +60,7 @@ function estimateTokens(text: string): number {
   return Math.ceil(tokens);
 }
 
-export function ChatPanel({ selectedText, documentContent, currentDocId, autoSkills = [] }: ChatPanelProps) {
+export function ChatPanel({ selectedText, documentContent, currentDocId, autoSkills = [], onSkillApply }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -182,6 +183,18 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
       setConversations((prev) => [{ id: data.id, title: data.title, document_id: currentDocId, created_at: '', updated_at: '' }, ...prev]);
       return data.id;
     } catch { return ''; }
+  };
+
+  const handleApplyToEditor = (content: string) => {
+    if (!content) return;
+    // Convert plain text to HTML paragraphs for the editor
+    const html = content
+      .split(/\n\n+/)
+      .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+      .join('');
+    window.dispatchEvent(new CustomEvent('insert-to-editor', {
+      detail: { html, mode: selectedText ? 'replace' : 'append' },
+    }));
   };
 
   const persistMessage = async (convId: string, role: 'user' | 'assistant' | 'system', content: string) => {
@@ -413,12 +426,19 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
       }
 
       setSkillProgress(`接收结果: ${label}`);
-      await readStreamToMessages(response, (errMsg) => {
+      const resultContent = await readStreamToMessages(response, (errMsg) => {
         setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: `错误: ${errMsg}` },
         ]);
       }, convId);
+
+      // Auto-apply rewrite-type skills to editor
+      const autoApplySkills = ['humanizer', 'style-transfer'];
+      if (autoApplySkills.includes(skillName) && resultContent && selectedText) {
+        handleApplyToEditor(resultContent);
+        if (onSkillApply) onSkillApply(skillName, resultContent);
+      }
 
       setSkillProgress(`${label} — 完成`);
       setTimeout(() => setSkillProgress(''), 2000);
@@ -568,7 +588,7 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
           </div>
         )}
         {messages.map((msg, i) => (
-          <ChatMessage key={i} role={msg.role} content={msg.content} />
+          <ChatMessage key={i} role={msg.role} content={msg.content} onApplyToEditor={handleApplyToEditor} />
         ))}
         {loading && !activeSkill && (
           <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-text-muted">
