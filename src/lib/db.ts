@@ -67,6 +67,27 @@ function initSchema(database: SqlJsDatabase) {
       exported_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '新对话',
+      document_id TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+      content TEXT NOT NULL DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    )
+  `);
 }
 
 export function saveDb() {
@@ -145,5 +166,104 @@ export async function saveSkillPrefs(skillName: string, config: Record<string, u
      ON CONFLICT(skill_name) DO UPDATE SET config = excluded.config`,
     [skillName, JSON.stringify(config)]
   );
+  saveDb();
+}
+
+// Conversation types and CRUD
+
+export interface ConversationRow {
+  id: string;
+  title: string;
+  document_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MessageRow {
+  id: number;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at: string;
+}
+
+export async function listConversations(): Promise<ConversationRow[]> {
+  const database = await getDb();
+  const results = database.exec('SELECT * FROM conversations ORDER BY updated_at DESC');
+  if (!results.length) return [];
+  const { columns, values } = results[0];
+  return values.map((row: any[]) => {
+    const c: any = {};
+    columns.forEach((col: string, i: number) => { c[col] = row[i]; });
+    return c as ConversationRow;
+  });
+}
+
+export async function getConversation(id: string): Promise<ConversationRow | undefined> {
+  const database = await getDb();
+  const results = database.exec('SELECT * FROM conversations WHERE id = ?', [id]);
+  if (!results.length || !results[0].values.length) return undefined;
+  const { columns, values } = results[0];
+  const c: any = {};
+  columns.forEach((col: string, i: number) => { c[col] = values[0][i]; });
+  return c as ConversationRow;
+}
+
+export async function createConversation(id: string, title: string, documentId?: string) {
+  const database = await getDb();
+  database.run(
+    `INSERT INTO conversations (id, title, document_id) VALUES (?, ?, ?)`,
+    [id, title, documentId || null]
+  );
+  saveDb();
+}
+
+export async function updateConversationTitle(id: string, title: string) {
+  const database = await getDb();
+  database.run(
+    `UPDATE conversations SET title = ?, updated_at = datetime('now') WHERE id = ?`,
+    [title, id]
+  );
+  saveDb();
+}
+
+export async function deleteConversation(id: string) {
+  const database = await getDb();
+  database.run('DELETE FROM messages WHERE conversation_id = ?', [id]);
+  database.run('DELETE FROM conversations WHERE id = ?', [id]);
+  saveDb();
+}
+
+export async function listMessages(conversationId: string): Promise<MessageRow[]> {
+  const database = await getDb();
+  const results = database.exec(
+    'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
+    [conversationId]
+  );
+  if (!results.length) return [];
+  const { columns, values } = results[0];
+  return values.map((row: any[]) => {
+    const m: any = {};
+    columns.forEach((col: string, i: number) => { m[col] = row[i]; });
+    return m as MessageRow;
+  });
+}
+
+export async function saveMessage(conversationId: string, role: 'user' | 'assistant' | 'system', content: string) {
+  const database = await getDb();
+  database.run(
+    `INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)`,
+    [conversationId, role, content]
+  );
+  database.run(
+    `UPDATE conversations SET updated_at = datetime('now') WHERE id = ?`,
+    [conversationId]
+  );
+  saveDb();
+}
+
+export async function deleteMessages(conversationId: string) {
+  const database = await getDb();
+  database.run('DELETE FROM messages WHERE conversation_id = ?', [conversationId]);
   saveDb();
 }

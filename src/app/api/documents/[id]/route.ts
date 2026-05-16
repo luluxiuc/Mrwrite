@@ -22,18 +22,24 @@ export async function PUT(
 ) {
   const { title, content, tags } = await req.json();
 
-  writeDocument(params.id, content);
-  const words = countWords(content || '');
+  // Only update content if explicitly provided
+  if (content !== undefined) {
+    writeDocument(params.id, content);
+  }
 
+  const existingContent = readDocument(params.id) || '';
+  const words = content !== undefined ? countWords(content) : countWords(existingContent);
+
+  const meta = await getDocument(params.id);
   await upsertDocument({
     id: params.id,
-    title: title || 'Untitled',
+    title: title || meta?.title || 'Untitled',
     path: `${params.id}.md`,
     word_count: words,
-    tags: JSON.stringify(tags || []),
+    tags: tags !== undefined ? JSON.stringify(tags) : (meta?.tags || '[]'),
   });
 
-  return Response.json({ id: params.id, word_count: words });
+  return Response.json({ id: params.id, title: title || meta?.title || 'Untitled', word_count: words });
 }
 
 export async function DELETE(

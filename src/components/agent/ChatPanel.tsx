@@ -1,6 +1,6 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Zap, Wifi, WifiOff } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Loader2, Zap, Wifi, WifiOff, Plus, MessageSquare, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ChatMessage } from './ChatMessage';
 
 interface ChatPanelProps {
@@ -19,6 +19,16 @@ interface Credentials {
   apiKey: string;
   baseUrl: string;
   model: string;
+  temperature: number;
+  maxTokens: number;
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  document_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 const SKILL_LABELS: Record<string, string> = {
@@ -30,6 +40,25 @@ const SKILL_LABELS: Record<string, string> = {
   'quality-gate': '质量门禁',
 };
 
+const SKILL_DESCRIPTIONS: Record<string, string> = {
+  humanizer: '检测并去除 AI 写作痕迹',
+  'outline-generator': '生成层级化写作大纲',
+  'chapter-manager': '管理章节结构与一致性',
+  'style-transfer': '模仿指定写作文风',
+  'continuity-checker': '审计跨章节一致性',
+  'quality-gate': '多维度写作质量评估',
+};
+
+function estimateTokens(text: string): number {
+  let tokens = 0;
+  for (const ch of text) {
+    if (/[一-鿿]/.test(ch)) tokens += 0.6;
+    else if (/[a-zA-Z0-9]/.test(ch)) tokens += 0.3;
+    else tokens += 0.2;
+  }
+  return Math.ceil(tokens);
+}
+
 export function ChatPanel({ selectedText, documentContent, currentDocId, autoSkills = [] }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -37,29 +66,53 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
   const [activeSkill, setActiveSkill] = useState<string | null>(null);
   const [skills, setSkills] = useState<{ name: string; description: string }[]>([]);
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null);
+
+  // Conversation state
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [convListOpen, setConvListOpen] = useState(false);
+
+  // Skill execution detail
+  const [skillProgress, setSkillProgress] = useState<string>('');
+
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/skills').then((r) => r.json()).then(setSkills).catch(() => {});
+    loadConversations();
   }, []);
 
-  // Check connection status on mount
   useEffect(() => {
     const creds = getCredentials();
-    if (!creds.apiKey) {
-      setConnectionOk(false);
-      return;
-    }
-    // Don't block UI — just show status
+    if (!creds.apiKey) { setConnectionOk(false); return; }
     testConnection(creds).then(setConnectionOk).catch(() => setConnectionOk(false));
   }, []);
 
+  // Auto-scroll on new messages or streaming content
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Aggressive scroll during streaming
+  useEffect(() => {
+    if (loading && scrollRef.current) {
+      const el = scrollRef.current;
+      const raf = requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [messages, loading]);
+
   const getCredentials = (): Credentials => {
-    if (typeof window === 'undefined') return { apiKey: '', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' };
+    if (typeof window === 'undefined') return { apiKey: '', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', temperature: 0.7, maxTokens: 4096 };
     return {
       apiKey: localStorage.getItem('mrwrite_api_key') || '',
       baseUrl: localStorage.getItem('mrwrite_base_url') || 'https://api.openai.com/v1',
       model: localStorage.getItem('mrwrite_model') || 'gpt-4o',
+      temperature: parseFloat(localStorage.getItem('mrwrite_temperature') || '0.7'),
+      maxTokens: parseInt(localStorage.getItem('mrwrite_max_tokens') || '4096', 10),
     };
   };
 
@@ -72,11 +125,77 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
       });
       const data = await res.json();
       return data.ok === true;
-    } catch {
-      return false;
+    } catch { return false; }
+  };
+
+  // Conversation management
+  const loadConversations = async () => {
+    try {
+      const res = await fetch('/api/conversations');
+      const data = await res.json();
+      if (Array.isArray(data)) setConversations(data);
+    } catch {}
+  };
+
+  const startNewConversation = () => {
+    setMessages([]);
+    setConversationId(null);
+    setConvListOpen(false);
+  };
+
+  const switchConversation = async (convId: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${convId}`);
+      const data = await res.json();
+      if (data.messages) {
+        setMessages(data.messages.map((m: { role: string; content: string }) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })));
+      }
+      setConversationId(convId);
+    } catch {}
+    setConvListOpen(false);
+  };
+
+  const deleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+    setConversations((prev) => prev.filter((c) => c.id !== convId));
+    if (conversationId === convId) {
+      setMessages([]);
+      setConversationId(null);
     }
   };
 
+  const ensureConversation = async (): Promise<string> => {
+    if (conversationId) return conversationId;
+    try {
+      const firstMsg = messages.length > 0 ? messages[0].content.slice(0, 30) : '新对话';
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: firstMsg + '...', documentId: currentDocId }),
+      });
+      const data = await res.json();
+      setConversationId(data.id);
+      setConversations((prev) => [{ id: data.id, title: data.title, document_id: currentDocId, created_at: '', updated_at: '' }, ...prev]);
+      return data.id;
+    } catch { return ''; }
+  };
+
+  const persistMessage = async (convId: string, role: 'user' | 'assistant' | 'system', content: string) => {
+    if (!convId) return;
+    try {
+      await fetch(`/api/conversations/${convId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, content }),
+      });
+    } catch {}
+  };
+
+  // Skill execution listener
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -88,10 +207,6 @@ export function ChatPanel({ selectedText, documentContent, currentDocId, autoSki
     window.addEventListener('execute-skill', handler);
     return () => window.removeEventListener('execute-skill', handler);
   }, [selectedText, documentContent]);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, [messages]);
 
   const buildSystemPrompt = (): string => {
     const title = currentDocId || '未命名文档';
@@ -130,7 +245,8 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
 
   const readStreamToMessages = async (
     response: Response,
-    onError: (msg: string) => void
+    onError: (msg: string) => void,
+    convId: string
   ): Promise<string> => {
     const reader = response.body?.getReader();
     if (!reader) throw new Error('No stream available');
@@ -176,6 +292,7 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
         }
       }
     }
+    await persistMessage(convId, 'assistant', fullContent);
     return fullContent;
   };
 
@@ -189,12 +306,14 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
       setMessages((prev) => [
         ...prev,
         { role: 'user', content: userMessage },
-        { role: 'assistant', content: '⚠️ 请先在设置中配置 API Key（点击右上角齿轮图标）' },
+        { role: 'assistant', content: '请先在设置中配置 API Key（点击右上角齿轮图标）' },
       ]);
       return;
     }
 
+    const convId = await ensureConversation();
     setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
+    if (convId) await persistMessage(convId, 'user', userMessage);
     setLoading(true);
 
     try {
@@ -206,6 +325,8 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
           apiKey: creds.apiKey,
           baseUrl: creds.baseUrl,
           model: creds.model,
+          temperature: creds.temperature,
+          maxTokens: creds.maxTokens,
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages.map((m) => ({ role: m.role, content: m.content })),
@@ -219,7 +340,7 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
         const errData = await response.json().catch(() => ({ error: 'Unknown error' }));
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `❌ 连接失败: ${errData.error || 'Unknown error'}` },
+          { role: 'assistant', content: `连接失败: ${errData.error || 'Unknown error'}` },
         ]);
         setLoading(false);
         return;
@@ -228,13 +349,13 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
       await readStreamToMessages(response, (errMsg) => {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `❌ 错误: ${errMsg}` },
+          { role: 'assistant', content: `错误: ${errMsg}` },
         ]);
-      });
+      }, convId);
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `❌ 网络错误: ${err.message}` },
+        { role: 'assistant', content: `网络错误: ${err.message}` },
       ]);
     } finally {
       setLoading(false);
@@ -246,15 +367,26 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
     if (!creds.apiKey) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: '⚠️ 请先在设置中配置 API Key' },
+        { role: 'assistant', content: '请先在设置中配置 API Key' },
       ]);
       return;
     }
 
+    const label = SKILL_LABELS[skillName] || skillName;
+    const desc = SKILL_DESCRIPTIONS[skillName] || '';
     setActiveSkill(skillName);
+    setSkillProgress(`正在加载技能: ${label}`);
     setLoading(true);
 
+    const convId = await ensureConversation();
+    // Add a system message about skill invocation
+    if (convId) {
+      await persistMessage(convId, 'system', `调用技能: ${label} (${desc})`);
+    }
+
     try {
+      setSkillProgress(`执行中: ${label} — ${desc}`);
+
       const response = await fetch('/api/skills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,23 +404,28 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
         const errData = await response.json().catch(() => ({ error: 'Unknown error' }));
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `❌ 技能执行失败: ${errData.error || 'Unknown error'}` },
+          { role: 'assistant', content: `技能执行失败: ${errData.error || 'Unknown error'}` },
         ]);
         setLoading(false);
         setActiveSkill(null);
+        setSkillProgress('');
         return;
       }
 
+      setSkillProgress(`接收结果: ${label}`);
       await readStreamToMessages(response, (errMsg) => {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `❌ 错误: ${errMsg}` },
+          { role: 'assistant', content: `错误: ${errMsg}` },
         ]);
-      });
+      }, convId);
+
+      setSkillProgress(`${label} — 完成`);
+      setTimeout(() => setSkillProgress(''), 2000);
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `❌ 错误: ${err.message}` },
+        { role: 'assistant', content: `错误: ${err.message}` },
       ]);
     } finally {
       setLoading(false);
@@ -296,11 +433,85 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
     }
   };
 
+  // Context usage calculation
+  const systemPrompt = buildSystemPrompt();
+  const allText = systemPrompt + messages.map((m) => m.content).join('');
+  const usedTokens = estimateTokens(allText);
+  const creds = getCredentials();
+  const maxTokens = creds.maxTokens || 4096;
+  const usagePercent = Math.min(100, Math.round((usedTokens / maxTokens) * 100));
+  const usageColor = usagePercent > 80 ? '#ef4444' : usagePercent > 50 ? '#f59e0b' : '#22c55e';
+
   return (
     <div className="flex flex-col flex-1">
-      {/* Connection status and Auto-skill banner */}
+      {/* Conversation header */}
+      <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
+        <button
+          onClick={startNewConversation}
+          className="btn-ghost p-1.5 shrink-0"
+          title="新对话"
+        >
+          <Plus size={14} />
+        </button>
+        <div className="relative flex-1">
+          <button
+            onClick={() => setConvListOpen(!convListOpen)}
+            className="flex items-center gap-1.5 w-full text-left px-2 py-1 rounded-md hover:bg-surface-hover transition-all"
+          >
+            <MessageSquare size={12} className="text-text-muted shrink-0" />
+            <span className="text-[12px] text-text-secondary truncate flex-1">
+              {conversationId
+                ? conversations.find((c) => c.id === conversationId)?.title || '对话'
+                : messages.length > 0
+                  ? '新对话 (未保存)'
+                  : '新对话'}
+            </span>
+            {convListOpen ? <ChevronUp size={12} className="text-text-muted shrink-0" /> : <ChevronDown size={12} className="text-text-muted shrink-0" />}
+          </button>
+          {convListOpen && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-xl z-30 max-h-48 overflow-y-auto">
+              <div className="p-1">
+                <button
+                  onClick={startNewConversation}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-[12px] text-accent hover:bg-accent-subtle rounded-md transition-all"
+                >
+                  <Plus size={12} /> 新建对话
+                </button>
+                {conversations.length === 0 && (
+                  <p className="px-3 py-2 text-[11px] text-text-muted">暂无历史对话</p>
+                )}
+                {conversations.map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => switchConversation(c.id)}
+                    className={`flex items-center gap-2 w-full px-3 py-2 text-[12px] rounded-md cursor-pointer transition-all group ${
+                      c.id === conversationId ? 'bg-accent-subtle text-accent' : 'text-text-secondary hover:bg-surface-hover'
+                    }`}
+                  >
+                    <MessageSquare size={12} className="shrink-0" />
+                    <span className="flex-1 truncate">{c.title}</span>
+                    <button
+                      onClick={(e) => deleteConversation(c.id, e)}
+                      className="hidden group-hover:block p-0.5 hover:text-error shrink-0"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Connection status mini */}
+        <div className="shrink-0">
+          {connectionOk === true && <Wifi size={11} className="text-green-500" />}
+          {connectionOk === false && <WifiOff size={11} className="text-red-400" />}
+        </div>
+      </div>
+
+      {/* Auto-skill banner */}
       {autoSkills.length > 0 && (
-        <div className="px-4 py-2 bg-accent-subtle border-b border-accent/20">
+        <div className="px-4 py-2 bg-accent-subtle border-b border-accent/20 shrink-0">
           <p className="text-[11px] text-accent font-medium mb-1.5 flex items-center gap-1.5">
             <Zap size={11} /> AI 建议使用的技能
           </p>
@@ -321,24 +532,15 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
         </div>
       )}
 
-      {/* Selection info + Connection status */}
-      <div className="px-4 py-2 border-b border-border flex items-center justify-between">
-        <p className="text-[11px] text-text-muted">
-          {selectedText
-            ? `已选中 ${selectedText.length} 字`
-            : '选中文字后可使用技能'}
-        </p>
-        {connectionOk === true && (
-          <span className="flex items-center gap-1 text-[10px] text-green-500">
-            <Wifi size={10} /> API 已连接
-          </span>
-        )}
-        {connectionOk === false && (
-          <span className="flex items-center gap-1 text-[10px] text-red-400">
-            <WifiOff size={10} /> API 未配置
-          </span>
-        )}
-      </div>
+      {/* Skill execution status */}
+      {skillProgress && (
+        <div className="px-4 py-2 bg-accent/5 border-b border-accent/20 shrink-0">
+          <div className="flex items-center gap-2 text-[12px] text-accent">
+            <Loader2 size={12} className="animate-spin" />
+            <span>{skillProgress}</span>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -368,18 +570,45 @@ ${selectedText ? `"${selectedText}"` : '（未选中文字）'}
         {messages.map((msg, i) => (
           <ChatMessage key={i} role={msg.role} content={msg.content} />
         ))}
-        {loading && (
+        {loading && !activeSkill && (
           <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-text-muted">
             <Loader2 size={14} className="animate-spin" />
-            {activeSkill
-              ? `执行 ${SKILL_LABELS[activeSkill] || activeSkill}...`
-              : '思考中...'}
+            思考中...
           </div>
         )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Context usage bar */}
+      <div className="shrink-0 px-4 py-1.5 border-t border-border bg-surface/30">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-text-muted shrink-0">上下文</span>
+          <div className="flex-1 h-1.5 bg-bg-editor rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${usagePercent}%`, backgroundColor: usageColor }}
+            />
+          </div>
+          <span className="text-[10px] text-text-muted shrink-0" style={{ color: usageColor }}>
+            {usedTokens}/{maxTokens} ({usagePercent}%)
+          </span>
+        </div>
+      </div>
+
+      {/* Selection info */}
+      <div className="px-4 py-1.5 border-t border-border flex items-center justify-between shrink-0">
+        <p className="text-[10px] text-text-muted">
+          {selectedText
+            ? `已选中 ${selectedText.length} 字`
+            : '选中文字后可使用技能'}
+        </p>
+        <span className="text-[10px] text-text-muted">
+          {messages.length > 0 ? `${messages.length} 条消息` : ''}
+        </span>
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border shrink-0">
         <div className="flex gap-2">
           <textarea
             value={input}

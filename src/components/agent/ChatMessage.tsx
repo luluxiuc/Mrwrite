@@ -1,4 +1,4 @@
-import { User, Bot } from 'lucide-react';
+import { User, Bot, Zap } from 'lucide-react';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant' | 'system';
@@ -6,6 +6,17 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ role, content }: ChatMessageProps) {
+  if (role === 'system') {
+    return (
+      <div className="px-4 py-1.5 text-center">
+        <span className="text-[10px] text-text-muted bg-surface border border-border rounded-full px-2.5 py-0.5 inline-flex items-center gap-1">
+          <Zap size={10} className="text-accent" />
+          {content}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex gap-3 px-4 py-3 ${role === 'user' ? 'bg-bg/40' : ''}`}>
       <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
