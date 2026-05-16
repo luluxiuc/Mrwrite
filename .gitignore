@@ -13,6 +13,7 @@ yarn-error.log*
 tmp/
 temp/
 .superpowers/
+.claude/
 __pycache__/
 *.pyc
 .DS_Store
